@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Chat Rooms</title>
     <style>
-        #roomList, #chatRoom {
+        #roomList,
+        #chatRoom {
             border: 1px solid #ccc;
             padding: 10px;
             margin-bottom: 10px;
         }
+
         #messages {
             height: 300px;
             overflow-y: scroll;
@@ -17,6 +20,7 @@
         }
     </style>
 </head>
+
 <body>
     <div id="roomList">
         <h2>Room List</h2>
@@ -29,6 +33,7 @@
     <div id="chatRoom" style="display: none;">
         <h2>Chat Room: <span id="roomName"></span></h2>
         <p id="roomDescription"></p>
+        <p>Subscribers: <span id="subscriberCount">0</span></p>
         <textarea id="message" rows="4" cols="50"></textarea>
     </div>
 
@@ -37,7 +42,10 @@
     <script>
         let stompClient = null;
         let currentRoomId = null;
+        let currentSubscription = null;
+        let subscriberSubscription = null;
         let serverURL = 'http://localhost:8080'
+        // let serverURL = 'http://175.192.72.85:8080'
 
         function connect() {
             var socket = new SockJS(`${serverURL}/ws`);
@@ -57,7 +65,7 @@
                     rooms.forEach(room => {
                         var li = document.createElement('li');
                         li.appendChild(document.createTextNode(room.name));
-                        li.onclick = function() { joinRoom(room.id, room.name, room.description); };
+                        li.onclick = function () { joinRoom(room.id, room.name, room.description); };
                         roomList.appendChild(li);
                     });
                 });
@@ -66,7 +74,7 @@
         function createRoom() {
             var roomName = document.getElementById('newRoomName').value;
             var roomDescription = document.getElementById('newRoomDescription').value;
-            fetch(`${serverURL}/api/room`, { 
+            fetch(`${serverURL}/api/room`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -76,16 +84,23 @@
                     description: roomDescription
                 })
             })
-            .then(response => response.json())
-            .then(room => {
-                document.getElementById('newRoomName').value = '';
-                document.getElementById('newRoomDescription').value = '';
-                loadRooms();
-            });
+                .then(response => response.json())
+                .then(room => {
+                    document.getElementById('newRoomName').value = '';
+                    document.getElementById('newRoomDescription').value = '';
+                    loadRooms();
+                });
         }
 
-        // 방 들어갔을 때
         function joinRoom(roomId, roomName, roomDescription) {
+            // 이전 구독 해제
+            if (currentSubscription) {
+                currentSubscription.unsubscribe();
+            }
+            if (subscriberSubscription) {
+                subscriberSubscription.unsubscribe();
+            }
+
             currentRoomId = roomId;
             document.getElementById('roomName').textContent = roomName;
             document.getElementById('roomDescription').textContent = roomDescription;
@@ -93,32 +108,32 @@
             document.getElementById('chatRoom').style.display = 'block';
 
             if (stompClient.connected) {
-                stompClient.subscribe('/topic/' + roomId, function (messageOutput) {
+                // 데이터 공유를 위한 구독
+                currentSubscription = stompClient.subscribe('/topic/' + roomId, function (messageOutput) {
                     setMessage(messageOutput.body);
                 });
+
+                // 구독자 수 업데이트를 위한 새로운 구독
+                subscriberSubscription = stompClient.subscribe('/topic/room/' + roomId + '/subscribers', function (message) {
+                    document.getElementById('subscriberCount').textContent = message.body;
+                });
+
+                // 방에 들어온 직후 구독자 수를 즉시 업데이트
+                fetch(`${serverURL}/api/room/${roomId}/subscribers`)
+                    .then(response => response.json())
+                    .then(subscriberCount => {
+                        document.getElementById('subscriberCount').textContent = subscriberCount;
+                    });
             }
 
             fetch(`${serverURL}/api/room/${roomId}`)
-                .then(response => {
-                    if (!response.ok) { // 응답 상태 코드가 200~299 범위가 아닌 경우
-                        throw new Error('Network response was not ok ' + response.statusText);
-                    }
-                    return response.text(); // 응답 본문을 문자열로 변환
-                })
+                .then(response => response.json())
                 .then(data => {
-                    const parsedData = JSON.parse(data);
-                    setMessage(parsedData.content);
+                    setMessage(data.content);
                 })
                 .catch(error => console.error('Error fetching room content:', error));
         }
 
-        function sendMessage() {
-            var message = document.getElementById('message').value;
-            stompClient.send("/send-text", {}, JSON.stringify({
-                roomId: currentRoomId,
-                content: message
-            }));
-        }
 
         function setMessage(message) {
             document.getElementById('message').value = message;
@@ -134,8 +149,18 @@
             }, 500);
         });
 
+        // 페이지를 나갈 때 구독 해제
+        window.addEventListener('beforeunload', function () {
+            if (currentSubscription) {
+                currentSubscription.unsubscribe();
+            }
+            if (subscriberSubscription) {
+                subscriberSubscription.unsubscribe();
+            }
+        });
+
         connect();
-        
     </script>
 </body>
+
 </html>
