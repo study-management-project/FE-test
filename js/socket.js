@@ -1,5 +1,6 @@
 let stompClient = null;
-const serverURL = "http://localhost:8080";
+// const serverURL = "http://localhost:8080";
+const serverURL = "http://175.192.72.85:8080";
 
 let codeSubscription = null;
 let commentSubscription = null;
