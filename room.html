@@ -33,15 +33,18 @@
             <h3>Comments:</h3>
             <ul id="comments"></ul>
         </div>
-        
+
         <textarea id="comment" rows="4" cols="50"></textarea>
-        <button id="comment-submit">전송</button>
+        <button id="comment-submit">채팅전송</button>
 
         <div id="checkUp">
             <h3>Check Up:</h3>
             <p id="checkUpTitle"></p>
         </div>
-        <textarea id="code" rows="4" cols="50"></textarea>
+
+        <input id="snapshot-title" placeholder="snapshot-title"> <br>
+        <textarea id="code" rows="4" cols="50" placeholder="code"></textarea>
+        <button id="snapshot-submit">스냅샷 생성</button>
     </div>
 
     <div id="auth">
@@ -63,9 +66,11 @@
 
         let codeSubscription = null;
         let commentSubscription = null;
+        let snapshotSubscription = null;
 
         let serverURL = 'http://localhost:8080'
 
+        // 소켓 연결 (SockJS 기반으로 Stomp 생성)
         function connect() {
             var socket = new SockJS(`${serverURL}/ws`);
             stompClient = Stomp.over(socket);
@@ -75,11 +80,21 @@
             });
         }
 
-        function joinRoom(roomId) {
-            if (codeSubscription) {
-                codeSubscription.unsubscribe();
-            }
+        // 기존 구독 초기화
+        function clearSubscription() {
+            if (codeSubscription) codeSubscription.unsubscribe();
+            if (commentSubscription) commentSubscription.unsubscribe();
+            if (snapshotSubscription) snapshotSubscription.unsubscribe();
+        }
 
+        // 예기치 않은 종료 시에도 구독 초기화
+        window.addEventListener('beforeunload', function () {
+            clearSubscription();
+        });
+
+        function joinRoom(roomId) {
+            clearSubscription();
+            
             fetch(`${serverURL}/room/${roomId}`)
                 .then(response => response.json())
                 .then(data => {
@@ -95,9 +110,14 @@
                 commentSubscription = stompClient.subscribe('/topic/' + roomId + '/comment', function (commentOutput) {
                     addComment(commentOutput.body);
                 });
+
+                snapshotSubscription = stompClient.subscribe('/topic/' + roomId + '/snapshot', function (latestSnapshot) {
+                    addSnapshot(latestSnapshot.body);
+                });
             }
         }
 
+        // room 상세정보 출력
         function displayRoomInfo(data) {
             document.getElementById('roomName').textContent = data.name;
             document.getElementById('roomDescription').textContent = data.description;
@@ -122,6 +142,7 @@
             document.getElementById('checkUpTitle').textContent = data.checkUp.title;
         }
 
+        // 코드쉐어 부분
         let timer;
         document.getElementById('code').addEventListener('input', function () {
             clearTimeout(timer);
@@ -135,6 +156,8 @@
             document.getElementById('code').value = code;
         }
 
+
+        // 댓글 부분
         document.getElementById('comment-submit').addEventListener('click', function () {
             var content = document.getElementById('comment').value;
             stompClient.send("/share-comment", {}, JSON.stringify({ 'uuid': currentRoomId, 'content': content }));
@@ -147,12 +170,21 @@
             commentsList.appendChild(li);
         }
 
-        window.addEventListener('beforeunload', function () {
-            if (codeSubscription) {
-                codeSubscription.unsubscribe();
-            }
+        // 스냅샷 부분
+        document.getElementById('snapshot-submit').addEventListener('click', function () {
+            let title = document.getElementById('snapshot-title').value;
+            let content = document.getElementById('code').value;
+            stompClient.send("/share-snapshot", {}, JSON.stringify({ 'uuid': currentRoomId, 'title': title, 'content': content }));
         });
 
+        function addSnapshot(snapshot) {
+            let parsedSnapshot = JSON.parse(snapshot);
+            const snapshotList = document.getElementById('snapshots');
+            const li = document.createElement('li');
+            li.textContent = `${parsedSnapshot.title} ${parsedSnapshot.content} (${parsedSnapshot.createdDate})`;
+            snapshotList.append(li);
+        }
+        // auth 관련 부분
         document.getElementById('loginForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const email = document.getElementById('email').value;
@@ -194,7 +226,6 @@
             })
         });
 
-        // 로그아웃 처리
         document.getElementById('logoutButton').addEventListener('click', function() {
             // 서버 세션은 끊기는데 쿠키는 삭제가 안되네?
             document.cookie = 'JSESSIONID=; Max-Age=0; path=/; domain=localhost;';
