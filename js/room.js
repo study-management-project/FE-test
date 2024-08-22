@@ -29,6 +29,13 @@ function joinRoom(roomId) {
         addSnapshot(latestSnapshot.body);
       }
     );
+
+    checkUpSubscription = stompClient.subscribe(
+      "/topic/" + roomId + "/checkup",
+      function (latestSnapshot) {
+        setCheckupTitle(latestSnapshot.body);
+      }
+    );
   }
 }
 
@@ -46,6 +53,4 @@ function displayRoomInfo(data) {
   const commentsList = document.getElementById("comments");
   commentsList.innerHTML = "";
   data.commentList.forEach((comment) => addComment(comment));
-
-  document.getElementById("checkUpTitle").textContent = data.checkUp.title;
 }
