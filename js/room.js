@@ -1,4 +1,5 @@
 let currentRoomId = "bc31c700-8318-46a9-b6aa-bed717ba1663";
+let currentUserId= 1;
 
 function joinRoom(roomId) {
   clearSubscription();
@@ -9,6 +10,9 @@ function joinRoom(roomId) {
     .catch((error) => console.error("Error fetching room content:", error));
 
   if (stompClient.connected) {
+
+    
+
     codeSubscription = stompClient.subscribe(
       "/topic/" + roomId + "/code",
       function (codeOutput) {
@@ -36,6 +40,16 @@ function joinRoom(roomId) {
         setCheckupTitle(latestSnapshot.body);
       }
     );
+
+    // 여기 추가
+    checkUpResultSubscription = stompClient.subscribe(
+      "/user/queue/" + roomId + "/result/checkup",
+      function (result) {
+        console.log('Received checkup result:', result.body);
+        
+        setCheckupResult(result.body);
+      }
+    );
   }
 }
 
@@ -53,4 +67,12 @@ function displayRoomInfo(data) {
   const commentsList = document.getElementById("comments");
   commentsList.innerHTML = "";
   data.commentList.forEach((comment) => addComment(comment));
+  // const checkup= document.getElementById("");
+  const checkup = data.checkUpDTO;
+  console.log(checkup.title);
+  
+  document.getElementById("recieve-checkup").textContent=checkup.title;
+  if(checkup.isOpen){
+    //버튼 활성화 
+  }
 }
